@@ -1,6 +1,6 @@
 % Think this works, haven't properly checked it.
 
-function [F,u] = propAngularSpectrum(F, x, lambda, z)
+function F = propAngularSpectrum(F, x, lambda, z)
 
     Nx = length(x);
     dx = x(2) - x(1);
@@ -15,7 +15,6 @@ function [F,u] = propAngularSpectrum(F, x, lambda, z)
     F = fftshift(ifft2(fftshift(F)));
     
     F(sqrt(x.^2 + x.'.^2) > 20e-6) = 0;
-    F = reshape(F, Nx*Nx, 1);
     
    
 end
