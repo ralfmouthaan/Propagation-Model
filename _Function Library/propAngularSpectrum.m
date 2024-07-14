@@ -12,9 +12,6 @@ function F = propAngularSpectrum(F, x, lambda, z)
     
     F = fftshift(fft2(fftshift(F)));
     F = F.*filter;
-    F = fftshift(ifft2(fftshift(F)));
-    
-    F(sqrt(x.^2 + x.'.^2) > 20e-6) = 0;
-    
+    F = fftshift(ifft2(fftshift(F)));    
    
 end
