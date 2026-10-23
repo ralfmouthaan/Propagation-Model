@@ -21,8 +21,8 @@ x = linspace(-5e-3, 5e-3, Nx);
 [x_mesh, y_mesh] = meshgrid(x, x.');
 r_mesh = sqrt(x_mesh.^2 + y_mesh.^2);
 
-M1_tiltx = 0; M1_tilty = 1;
-M2_tiltx = 1; M2_tilty = 0;
+M1_tiltx = 0; M1_tilty = 50;
+M2_tiltx = 2.5; M2_tilty = 0;
 M3_tiltx = -M1_tiltx; M3_tilty = -M1_tilty;
 Defocus = 0;
 
@@ -51,11 +51,37 @@ F2 = propAngularSpectrum(F2, x, lambda, d);
 F2 = F2.*exp(1i*x_mesh*-M2_tiltx*500);
 F2 = F2.*exp(1i*y_mesh*M2_tilty*500);
 F2 = propAngularSpectrum(F2, x, lambda, d);
-F2 = F2.*exp(1i*x_mesh*-M3_tiltx*500);
-F2 = F2.*exp(1i*y_mesh*M3_tilty*500);
+F2 = F2.*exp(1i*x_mesh*-M1_tiltx*500);
+F2 = F2.*exp(1i*y_mesh*M1_tilty*500);
 F2 = propAngularSpectrum(F2, x, lambda, d);
 
 Fsum = F1 - F2; % Difference because Sagnac BS
+
+%%
+
+figure; 
+subplot(1,2,1);
+imagesc(x*1e3, x*1e3, abs(F1).^2);
+xlabel('mm'); ylabel('mm');
+axis square;
+title('Intensity');
+subplot(1,2,2);
+imagesc(x*1e3, x*1e3, angle(F1));
+xlabel('mm'); ylabel('mm');
+axis square;
+title('Phase');
+
+figure; 
+subplot(1,2,1);
+imagesc(x*1e3, x*1e3, abs(F2).^2);
+xlabel('mm'); ylabel('mm');
+axis square;
+title('Intensity');
+subplot(1,2,2);
+imagesc(x*1e3, x*1e3, angle(F2));
+xlabel('mm'); ylabel('mm');
+axis square;
+title('Phase');
 
 figure; 
 subplot(1,2,1);

@@ -5,7 +5,7 @@ function F = propAngularSpectrum(F, x, lambda, z)
     Nx = length(x);
     dx = x(2) - x(1);
     du = 1/dx;
-    u = -Nx/2 + 1/2 : Nx/2 - 1/2;
+    u = -Nx/2 : Nx/2 - 1;
     u = u*du/length(u);
     
     filter = exp(1i*2*pi*z.*sqrt(1/lambda^2 - u.^2 - u.'.^2));

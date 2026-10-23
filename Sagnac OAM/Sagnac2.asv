@@ -1,0 +1,165 @@
+% Ralf Mouthaan
+% Adelaide University
+% November 2026
+%
+% Debugging Katelyn's sagnac OAM system.
+% Katelyn can't seem to get proper OAM beams using her misaligned Sagnac
+% system. This script is using an ASM propagation model to investigate what
+% the effect of misaligning the mirrors should do in theory.
+
+clc; clear variables; close all;
+addpath('../_Function Library')
+
+%%
+
+lambda = 633e-9;
+Nx = 1024;
+w0 = 1e-3;
+d = 10e-2; % Side length of square sagnac
+
+x = linspace(-5e-3, 5e-3, Nx);
+[x_mesh, y_mesh] = meshgrid(x, x.');
+r_mesh = sqrt(x_mesh.^2 + y_mesh.^2);
+
+M1_tiltx = 0; M1_tilty = 401;
+M2_tiltx = 2.5; M2_tilty = 0;
+M3_tiltx = -M1_tiltx; M3_tilty = -M1_tilty;
+Defocus = 0;
+
+% Original beam
+F0 = exp(-(r_mesh.^2)/w0^2).*exp(1i*r_mesh.^2*Defocus*500);
+
+% Beam going round clockwise
+F1 = F0;
+F1 = propAngularSpectrum(F1, x, lambda, d);
+F1 = F1.*exp(1i*x_mesh*M1_tiltx*500);
+F1 = F1.*exp(1i*y_mesh*M1_tilty*500);
+F1 = propAngularSpectrum(F1, x, lambda, d);
+F1 = F1.*exp(1i*x_mesh*M2_tiltx*500);
+F1 = F1.*exp(1i*y_mesh*M2_tilty*500);
+F1 = propAngularSpectrum(F1, x, lambda, d);
+F1 = F1.*exp(1i*x_mesh*M3_tiltx*500);
+F1 = F1.*exp(1i*y_mesh*M3_tilty*500);
+F1 = propAngularSpectrum(F1, x, lambda, d);
+
+% Beam going round counter-clockwise
+F2 = F0;
+F2 = propAngularSpectrum(F2, x, lambda, d);
+F2 = F2.*exp(1i*x_mesh*-M3_tiltx*500);
+F2 = F2.*exp(1i*y_mesh*M3_tilty*500);
+F2 = propAngularSpectrum(F2, x, lambda, d);
+F2 = F2.*exp(1i*x_mesh*-M2_tiltx*500);
+F2 = F2.*exp(1i*y_mesh*M2_tilty*500);
+F2 = propAngularSpectrum(F2, x, lambda, d);
+F2 = F2.*exp(1i*x_mesh*-M1_tiltx*500);
+F2 = F2.*exp(1i*y_mesh*M1_tilty*500);
+F2 = propAngularSpectrum(F2, x, lambda, d);
+
+Fsum = F1 - F2; % Difference because Sagnac BS
+
+%% Ring uniformity analysis
+
+I = abs(Fsum).^2;
+
+% Intensity centroid, used as a first guess of the beam position (tilts can
+% shift the beam off-axis)
+xc = sum(I(:).*x_mesh(:))/sum(I(:));
+yc = sum(I(:).*y_mesh(:))/sum(I(:));
+
+% Beam centre = phase singularity nearest the centroid. The centroid itself
+% is biased towards the brighter side of a non-uniform ring. Singularities
+% are found from the phase circulation around each 2x2 pixel plaquette.
+ph = angle(Fsum);
+wrap = @(a) angle(exp(1i*a));
+circ = wrap(ph(1:end-1,2:end) - ph(1:end-1,1:end-1)) + ...
+       wrap(ph(2:end,2:end)   - ph(1:end-1,2:end)) + ...
+       wrap(ph(2:end,1:end-1) - ph(2:end,2:end)) + ...
+       wrap(ph(1:end-1,1:end-1) - ph(2:end,1:end-1));
+[row_v, col_v] = find(abs(round(circ/(2*pi))) > 0);
+x_v = (x(col_v) + x(col_v+1))/2;
+y_v = (x(row_v) + x(row_v+1))/2;
+[~, idx_v] = min((x_v - xc).^2 + (y_v - yc).^2);
+x0 = x_v(idx_v);
+y0 = y_v(idx_v);
+
+% Ring radius = peak of azimuthally averaged radial intensity profile
+dx = x(2) - x(1);
+r_rel = sqrt((x_mesh - x0).^2 + (y_mesh - y0).^2);
+r_bins = 0:dx:max(x)-max(abs([x0 y0]));
+r_idx = discretize(r_rel(:), r_bins);
+valid = ~isnan(r_idx);
+I_radial = accumarray(r_idx(valid), I(valid), [length(r_bins)-1 1], @mean);
+r_centres = r_bins(1:end-1) + dx/2;
+[~, idx_max] = max(I_radial);
+r_ring = r_centres(idx_max);
+
+% Sample intensity and phase around the ring
+N_theta = 720;
+theta = linspace(0, 2*pi, N_theta+1); theta = theta(1:end-1);
+x_ring = x0 + r_ring*cos(theta);
+y_ring = y0 + r_ring*sin(theta);
+I_ring = interp2(x_mesh, y_mesh, I, x_ring, y_ring, 'linear');
+F_ring = interp2(x_mesh, y_mesh, Fsum, x_ring, y_ring, 'linear');
+phi_ring = unwrap(angle(F_ring));
+
+% Uniformity metrics
+I_ring_norm = I_ring/mean(I_ring);
+Uniformity_minmax = min(I_ring)/max(I_ring);                         % 1 = perfectly uniform
+Visibility = (max(I_ring) - min(I_ring))/(max(I_ring) + min(I_ring)); % 0 = perfectly uniform
+RMS_nonuniformity = std(I_ring)/mean(I_ring);                         % 0 = perfectly uniform
+
+% Topological charge from phase winding, and deviation from linear phase ramp
+l_charge = (phi_ring(end) - phi_ring(1) + angle(F_ring(1)/F_ring(end)))/(2*pi);
+p = polyfit(theta, phi_ring, 1);
+phase_dev = phi_ring - polyval(p, theta);
+
+fprintf('Beam centre: (%.3f, %.3f) mm\n', x0*1e3, y0*1e3);
+fprintf('Ring radius: %.3f mm\n', r_ring*1e3);
+fprintf('Min/max intensity ratio: %.4f\n', Uniformity_minmax);
+fprintf('Intensity visibility (max-min)/(max+min): %.4f\n', Visibility);
+fprintf('RMS non-uniformity (std/mean): %.4f\n', RMS_nonuniformity);
+fprintf('Topological charge: %.3f\n', l_charge);
+fprintf('RMS phase deviation from linear ramp: %.4f rad\n', std(phase_dev));
+
+%%
+
+figure; 
+subplot(1,2,1);
+imagesc(x*1e3, x*1e3, abs(Fsum).^2);
+xlabel('mm'); ylabel('mm');
+axis square;
+title('Intensity');
+hold on;
+plot(x_ring*1e3, y_ring*1e3, 'w--', 'LineWidth', 1);
+plot(x0*1e3, y0*1e3, 'w+');
+hold off;
+subplot(1,2,2);
+imagesc(x*1e3, x*1e3, angle(Fsum));
+xlabel('mm'); ylabel('mm');
+axis square;
+title('Phase');
+hold on;
+plot(x_ring*1e3, y_ring*1e3, 'w--', 'LineWidth', 1);
+plot(x0*1e3, y0*1e3, 'w+');
+hold off;
+
+return;
+
+figure;
+subplot(3,1,1);
+plot(r_centres*1e3, I_radial);
+xline(r_ring*1e3, 'r--');
+xlabel('Radius (mm)'); ylabel('Mean intensity');
+title('Azimuthally averaged radial profile');
+subplot(3,1,2);
+plot(theta*180/pi, I_ring_norm);
+xlim([0 360]); ylim([0 max(1.5, max(I_ring_norm)*1.1)]);
+xlabel('\theta (deg)'); ylabel('I / <I>');
+title(sprintf('Intensity around ring (min/max = %.3f, std/mean = %.3f)', ...
+    Uniformity_minmax, RMS_nonuniformity));
+subplot(3,1,3);
+plot(theta*180/pi, phase_dev);
+xlim([0 360]);
+xlabel('\theta (deg)'); ylabel('Phase deviation (rad)');
+title(sprintf('Phase around ring minus linear ramp (l = %.2f)', l_charge));
+
